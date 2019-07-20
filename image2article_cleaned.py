@@ -75,6 +75,7 @@ x, y = mask_titles.shape # image dimensions
 
 value = max(math.ceil(x/100),math.ceil(y/100))+20
 rlsa_titles_mask = rlsa.rlsa(mask_titles, True, False, value) #rlsa application
+rlsa_titles_mask_ = rlsa.rlsa(mask_titles, True, False, value) #rlsa application
 cv2.imshow('rlsa_title_mask', rlsa_titles_mask)
 cv2.imwrite('rlsa_title_mask.png', rlsa_titles_mask)
 
@@ -94,27 +95,84 @@ for idx in range(len(contours)):
     [x, y, w, h] = cv2.boundingRect(contours[idx])
     # apply some heuristic to different other stranger things masquerading as titles
     if w*h > 1500: # remove tiny contours the dirtify the image
-        cv2.drawContours(title_mask, [c], -1, 0, -1)
-        cv2.rectangle(title_mask, (x,y), (x+w,y+h), (0, 0, 255), 3)
+        # cv2.drawContours(title_mask, [c], -1, 0, -1)
+        # cv2.rectangle(title_mask, (x,y), (x+w,y+h), (0, 0, 255), 3)
         title = image[y: y+h, x: x+w]
         title_mask[y: y+h, x: x+w] = title # copied title contour onto the blank image
         image[y: y+h, x: x+w] = 255 # nullified the title contour on original image
-        cv2.putText(title_mask, "#{},x{},x{}".format(idx, x, y), cv2.boundingRect(contours[idx])[:2], cv2.FONT_HERSHEY_PLAIN, 2.0, [255, 153, 255], 2) # [B, G, R]
+        # cv2.putText(title_mask, "#{},x{},y{}".format(idx, x, y), cv2.boundingRect(contours[idx])[:2], cv2.FONT_HERSHEY_PLAIN, 2.0, [255, 153, 255], 2) # [B, G, R]
 
 (contours, _) = cv2.findContours(~rlsa_contents_mask,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
-contours = sorted(contours, key=lambda contour:determine_precedence(contour, total_columns))
+content_contours = sorted(contours, key=lambda contour:determine_precedence(contour, total_columns))
 contents_mask = np.ones(image.shape, dtype="uint8") * 255 # blank 3 layer image
 # for idx, contour in enumerate(contours):
-for idx in range(len(contours)):
+for idx in range(len(content_contours)):
     [x, y, w, h] = cv2.boundingRect(contours[idx])
     # apply some heuristic to different other stranger things masquerading as titles
     if w*h > 1500: # remove tiny contours the dirtify the image
-        cv2.drawContours(contents_mask, [c], -1, 0, -1)
-        cv2.rectangle(contents_mask, (x,y), (x+w,y+h), (0, 0, 255), 3)
+        # cv2.drawContours(contents_mask, [c], -1, 0, -1)
+        # cv2.rectangle(contents_mask, (x,y), (x+w,y+h), (0, 0, 255), 3)
         contents = image[y: y+h, x: x+w]
         contents_mask[y: y+h, x: x+w] = contents # copied title contour onto the blank image
         image[y: y+h, x: x+w] = 255 # nullified the title contour on original image
-        cv2.putText(contents_mask, "#{},x{},y{}".format(idx, x, y), cv2.boundingRect(contours[idx])[:2], cv2.FONT_HERSHEY_PLAIN, 2.0, [255, 153, 255], 2) # [B, G, R]
+        # cv2.putText(contents_mask, "#{},x{},y{}".format(idx, x, y), cv2.boundingRect(contours[idx])[:2], cv2.FONT_HERSHEY_PLAIN, 2.0, [255, 153, 255], 2) # [B, G, R]
+
+# the final act!!!
+(contours, _) = cv2.findContours(~rlsa_titles_mask_,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+contours = sorted(contours, key=lambda contour:determine_precedence(contour, total_columns))
+
+article_complete = False
+article_mask = np.ones(image.shape, dtype="uint8") * 255 # blank layer image for one article
+# for idx, contour in enumerate(contours):
+for idx, (prev, curr) in enumerate(zip(contours[::],contours[1::])):
+    # https://www.quora.com/How-do-I-iterate-through-a-list-in-python-while-comparing-the-values-at-adjacent-indices/answer/Jignasha-Patel-14
+    if article_complete:
+        article_mask = np.ones(image.shape, dtype="uint8") * 255 # blank layer image for one article
+    [px, py, pw, ph] = cv2.boundingRect(prev)
+    [cx, cy, cw, ch] = cv2.boundingRect(curr)
+    # apply some heuristic to differentiate other stranger things masquerading as titles
+    if pw*ph > 1500: # remove tiny contours the dirtify the image
+        # if gap between the two is bigger than the two titles combined multiplied by two. then we may have content to dump here
+        if (cy-py) > (ch+ph)*2 and (cy-py) > 0: # the second part is meant to notice change to next column
+            # bigger gap, slot any articles in the column and close this and one article done
+            article_content = contents_mask[py: py+ph, px: px+pw]
+            article_mask[py: py+ph, px: px+pw] = article_content # copied article content contour onto the blank image
+            article_complete = False
+        else:
+            # cv2.drawContours(article_mask, [c], -1, 0, -1)
+            # cv2.rectangle(article_mask, (x,y), (x+w,y+h), (0, 0, 255), 3)
+            # loop through contents and insert any valid ones in this gap
+            for idxx in range(len(content_contours)):
+                [x, y, w, h] = cv2.boundingRect(content_contours[idxx])
+                # apply some heuristic to different other stranger things masquerading as titles
+                if w*h > 1500: # remove tiny contours the dirtify the image
+                    dist = cv2.pointPolygonTest(content_contours[idxx],(x,y),False)
+                    if dist:
+                        # cv2.drawContours(contents_mask, [c], -1, 0, -1)
+                        # cv2.rectangle(contents_mask, (x,y), (x+w,y+h), (0, 0, 255), 3)
+                        contents = contents_mask[y: y+h, x: x+w]
+                        article_mask[y: y+h, x: x+w] = contents # copied title contour onto the blank image
+                        image[y: y+h, x: x+w] = 255 # nullified the title contour on original image
+                        # cv2.putText(contents_mask, "#{},x{},y{}".format(idxx, x, y), cv2.boundingRect(contours[idxx])[:2], cv2.FONT_HERSHEY_PLAIN, 2.0, [255, 153, 255], 2) # [B, G, R]
+                    break
+
+            # add this title into blank layer
+            article_title_p = title_mask[py: py+ph, px: px+pw]
+            article_mask[py: py+ph, px: px+pw] = article_title_p # copied title contour onto the blank image
+            image[py: py+ph, px: px+pw] = 255 # nullified the title contour on original image
+
+            article_title_c = title_mask[cy: cy+ch, cx: cx+cw]
+            article_mask[cy: cy+ch, cx: cx+cw] = article_title_c # copied title contour onto the blank image
+            image[cy: cy+ch, cx: cx+cw] = 255 # nullified the title contour on original image
+
+            article_complete = True
+            cv2.imwrite('article_{}.png'.format(idx), article_mask)
+            # cv2.putText(article_mask, "#{},x{},x{}".format(idx, x, y), cv2.boundingRect(contours[idx])[:2], cv2.FONT_HERSHEY_PLAIN, 2.0, [255, 153, 255], 2) # [B, G, R]
+
+
+
+
+
 
 # title = pytesseract.image_to_string(Image.fromarray(title_mask))
 # content = pytesseract.image_to_string(Image.fromarray(image))
