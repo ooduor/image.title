@@ -25,7 +25,9 @@ def lines_extraction(gray: List[int]) -> List[int]:
     lines = cv2.HoughLinesP(edges, 1, np.pi/180, 100, minLineLength, maxLineGap)
     return lines
 
-image = cv2.imread('./dds-89395-page-8.png') #reading the image
+# image = cv2.imread('./dds-89395-page-8.png') #reading the image (dev copy)
+# image = cv2.imread('./dds-89407-page-8.png') #reading the image
+image = cv2.imread('./dds-89412-page-8.png') #reading the image
 gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) # converting to grayscale image
 (thresh, im_bw) = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU) # converting to binary image
 im_bw = ~im_bw
@@ -122,6 +124,7 @@ for idx in range(len(content_contours)):
 contours = sorted(contours, key=lambda contour:determine_precedence(contour, total_columns))
 
 article_complete = False
+title_lines_count = 0
 article_mask = np.ones(image.shape, dtype="uint8") * 255 # blank layer image for one article
 # for idx, contour in enumerate(contours):
 for idx, (prev, curr) in enumerate(zip(contours[::],contours[1::])):
@@ -132,42 +135,82 @@ for idx, (prev, curr) in enumerate(zip(contours[::],contours[1::])):
     [cx, cy, cw, ch] = cv2.boundingRect(curr)
     # apply some heuristic to differentiate other stranger things masquerading as titles
     if pw*ph > 1500: # remove tiny contours the dirtify the image
-        # if gap between the two is bigger than the two titles combined multiplied by two. then we may have content to dump here
-        if (cy-py) > (ch+ph)*2 and (cy-py) > 0: # the second part is meant to notice change to next column
-            # bigger gap, slot any articles in the column and close this and one article done
-            article_content = contents_mask[py: py+ph, px: px+pw]
-            article_mask[py: py+ph, px: px+pw] = article_content # copied article content contour onto the blank image
-            article_complete = False
-        else:
-            # cv2.drawContours(article_mask, [c], -1, 0, -1)
-            # cv2.rectangle(article_mask, (x,y), (x+w,y+h), (0, 0, 255), 3)
-            # loop through contents and insert any valid ones in this gap
-            for idxx in range(len(content_contours)):
-                [x, y, w, h] = cv2.boundingRect(content_contours[idxx])
-                # apply some heuristic to different other stranger things masquerading as titles
-                if w*h > 1500: # remove tiny contours the dirtify the image
-                    dist = cv2.pointPolygonTest(content_contours[idxx],(x,y),False)
-                    if dist:
-                        # cv2.drawContours(contents_mask, [c], -1, 0, -1)
-                        # cv2.rectangle(contents_mask, (x,y), (x+w,y+h), (0, 0, 255), 3)
-                        contents = contents_mask[y: y+h, x: x+w]
-                        article_mask[y: y+h, x: x+w] = contents # copied title contour onto the blank image
-                        image[y: y+h, x: x+w] = 255 # nullified the title contour on original image
-                        # cv2.putText(contents_mask, "#{},x{},y{}".format(idxx, x, y), cv2.boundingRect(contours[idxx])[:2], cv2.FONT_HERSHEY_PLAIN, 2.0, [255, 153, 255], 2) # [B, G, R]
-                    break
+        if (cy-py) > 0: # EITHER SMALL OR BIG GAP DETECTED
+            if (cy-py) > (ch+ph)*2: # WE HAVE A BIG GAP
+                title_lines_count += 1
+                # bigger gap, slot any articles in the column and close this and one article done
+                # cv2.drawContours(article_mask, [c], -1, 0, -1)
+                # cv2.rectangle(article_mask, (x,y), (x+w,y+h), (0, 0, 255), 3)
+                # loop through contents and insert any valid ones in this gap
+                content_exists = False
+                for idxx in range(len(content_contours)):
+                    [x, y, w, h] = cv2.boundingRect(content_contours[idxx])
+                    # apply some heuristic to different other stranger things masquerading as titles
+                    if w*h > 1500: # remove tiny contours the dirtify the image
+                        dist = cv2.pointPolygonTest(content_contours[idxx],(x,y),False)
+                        if dist and (cy+ch) < (y+h) and (cx+cw) < (x+w):
+                            # cv2.drawContours(contents_mask, [c], -1, 0, -1)
+                            # cv2.rectangle(contents_mask, (x,y), (x+w,y+h), (0, 0, 255), 3)
+                            contents = contents_mask[y: y+h, x: x+w]
+                            article_mask[y: y+h, x: x+w] = contents # copied title contour onto the blank image
+                            image[y: y+h, x: x+w] = 255 # nullified the title contour on original image
+                            # cv2.putText(contents_mask, "#{},x{},y{}".format(idxx, x, y), cv2.boundingRect(contours[idxx])[:2], cv2.FONT_HERSHEY_PLAIN, 2.0, [255, 153, 255], 2) # [B, G, R]
+                            content_exists = False
+                            break
 
-            # add this title into blank layer
-            article_title_p = title_mask[py: py+ph, px: px+pw]
-            article_mask[py: py+ph, px: px+pw] = article_title_p # copied title contour onto the blank image
-            image[py: py+ph, px: px+pw] = 255 # nullified the title contour on original image
+                # add this title into blank layer
+                article_title_p = title_mask[py: py+ph, px: px+pw]
+                article_mask[py: py+ph, px: px+pw] = article_title_p # copied title contour onto the blank image
+                image[py: py+ph, px: px+pw] = 255 # nullified the title contour on original image
 
-            article_title_c = title_mask[cy: cy+ch, cx: cx+cw]
-            article_mask[cy: cy+ch, cx: cx+cw] = article_title_c # copied title contour onto the blank image
-            image[cy: cy+ch, cx: cx+cw] = 255 # nullified the title contour on original image
+                article_title_c = title_mask[cy: cy+ch, cx: cx+cw]
+                article_mask[cy: cy+ch, cx: cx+cw] = article_title_c # copied title contour onto the blank image
+                image[cy: cy+ch, cx: cx+cw] = 255 # nullified the title contour on original image
 
-            article_complete = True
-            cv2.imwrite('article_{}.png'.format(idx), article_mask)
-            # cv2.putText(article_mask, "#{},x{},x{}".format(idx, x, y), cv2.boundingRect(contours[idx])[:2], cv2.FONT_HERSHEY_PLAIN, 2.0, [255, 153, 255], 2) # [B, G, R]
+                article_complete = True
+                # cv2.putText(article_mask, "#{},x{},x{}".format(idx, x, y), cv2.boundingRect(contours[idx])[:2], cv2.FONT_HERSHEY_PLAIN, 2.0, [255, 153, 255], 2) # [B, G, R]
+                title_lines_count = 0
+            else: # WE HAVE A SMALL GAP
+                title_lines_count += 2
+                content_exists = False
+                for idxx in range(len(content_contours)):
+                    [x, y, w, h] = cv2.boundingRect(content_contours[idxx])
+                    # apply some heuristic to different other stranger things masquerading as titles
+                    if w*h > 1500: # remove tiny contours the dirtify the image
+                        dist = cv2.pointPolygonTest(content_contours[idxx],(x,y),False)
+                        if dist and (cy+ch) < (y+h) and (cx+cw) < (x+w):
+                            # cv2.drawContours(contents_mask, [c], -1, 0, -1)
+                            # cv2.rectangle(contents_mask, (x,y), (x+w,y+h), (0, 0, 255), 3)
+                            contents = contents_mask[y: y+h, x: x+w]
+                            article_mask[y: y+h, x: x+w] = contents # copied title contour onto the blank image
+                            image[y: y+h, x: x+w] = 255 # nullified the title contour on original image
+                            # cv2.putText(contents_mask, "#{},x{},y{}".format(idxx, x, y), cv2.boundingRect(contours[idxx])[:2], cv2.FONT_HERSHEY_PLAIN, 2.0, [255, 153, 255], 2) # [B, G, R]
+                            content_exists = True
+                            break
+
+                # add this title into blank layer
+                article_title_p = title_mask[py: py+ph, px: px+pw]
+                article_mask[py: py+ph, px: px+pw] = article_title_p # copied title contour onto the blank image
+                image[py: py+ph, px: px+pw] = 255 # nullified the title contour on original image
+
+                article_title_c = title_mask[cy: cy+ch, cx: cx+cw]
+                article_mask[cy: cy+ch, cx: cx+cw] = article_title_c # copied title contour onto the blank image
+                image[cy: cy+ch, cx: cx+cw] = 255 # nullified the title contour on original image
+
+                # check if any content contours were found (like in case of last article in the column...)
+                if content_exists:
+                    cv2.imwrite('article_{}.png'.format(idx), article_mask)
+
+                article_complete = False
+                print(title_lines_count)
+        else: # INVALID GAP ALERT!!
+            title_lines_count = 0
+            if (cy-py) < (ch+ph)*2: # CONFIRMED INVALD
+                # create new blank and skip this loop altogether
+                article_complete = True
+            else:
+                article_complete = True
+
 
 
 

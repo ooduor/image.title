@@ -20,7 +20,7 @@ def determine_precedence(contour, cols):
     Sort contours by distance from...
     https://stackoverflow.com/questions/39403183/python-opencv-sorting-contours
     """
-    avgwidth = 400
+    avgwidth = 350
     tolerance_factor = 10
     [x,y,w,h] = cv2.boundingRect(contour)
     i = 1
