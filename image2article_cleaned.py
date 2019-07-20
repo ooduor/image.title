@@ -83,10 +83,15 @@ rlsa_contents_mask = rlsa.rlsa(mask_contents, False, True, value) #rlsa applicat
 cv2.imshow('rlsa_contents_mask', rlsa_contents_mask)
 cv2.imwrite('rlsa_contents_mask.png', rlsa_contents_mask)
 
+# Total of regions
+total_columns = int(image.shape[1]/378)
+
 (contours, _) = cv2.findContours(~rlsa_titles_mask,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+contours = sorted(contours, key=lambda contour:determine_precedence(contour, total_columns))
 title_mask = np.ones(image.shape, dtype="uint8") * 255 # blank 3 layer image
-for idx, contour in enumerate(contours):
-    [x, y, w, h] = cv2.boundingRect(contour)
+# for idx, contour in enumerate(contours):
+for idx in range(len(contours)):
+    [x, y, w, h] = cv2.boundingRect(contours[idx])
     # apply some heuristic to different other stranger things masquerading as titles
     if w*h > 1500: # remove tiny contours the dirtify the image
         cv2.drawContours(title_mask, [c], -1, 0, -1)
@@ -94,14 +99,9 @@ for idx, contour in enumerate(contours):
         title = image[y: y+h, x: x+w]
         title_mask[y: y+h, x: x+w] = title # copied title contour onto the blank image
         image[y: y+h, x: x+w] = 255 # nullified the title contour on original image
-        cv2.putText(title_mask, "#{},x{}".format(idx, x), cv2.boundingRect(contours[idx])[:2], cv2.FONT_HERSHEY_PLAIN, 2.0, [255, 153, 255], 2) # [B, G, R]
+        cv2.putText(title_mask, "#{},x{},x{}".format(idx, x, y), cv2.boundingRect(contours[idx])[:2], cv2.FONT_HERSHEY_PLAIN, 2.0, [255, 153, 255], 2) # [B, G, R]
 
 (contours, _) = cv2.findContours(~rlsa_contents_mask,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
-
-
-
-# Total of regions
-total_columns = int(image.shape[1]/378)
 contours = sorted(contours, key=lambda contour:determine_precedence(contour, total_columns))
 contents_mask = np.ones(image.shape, dtype="uint8") * 255 # blank 3 layer image
 # for idx, contour in enumerate(contours):
@@ -114,7 +114,7 @@ for idx in range(len(contours)):
         contents = image[y: y+h, x: x+w]
         contents_mask[y: y+h, x: x+w] = contents # copied title contour onto the blank image
         image[y: y+h, x: x+w] = 255 # nullified the title contour on original image
-        cv2.putText(contents_mask, "#{},x{}".format(idx, x), cv2.boundingRect(contours[idx])[:2], cv2.FONT_HERSHEY_PLAIN, 2.0, [255, 153, 255], 2) # [B, G, R]
+        cv2.putText(contents_mask, "#{},x{},y{}".format(idx, x, y), cv2.boundingRect(contours[idx])[:2], cv2.FONT_HERSHEY_PLAIN, 2.0, [255, 153, 255], 2) # [B, G, R]
 
 # title = pytesseract.image_to_string(Image.fromarray(title_mask))
 # content = pytesseract.image_to_string(Image.fromarray(image))
