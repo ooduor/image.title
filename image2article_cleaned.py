@@ -6,6 +6,7 @@ import os
 import math
 import glob
 import pytesseract
+from scipy import stats
 from PIL import Image
 import sys
 import requests
@@ -25,13 +26,15 @@ def lines_extraction(gray: List[int]) -> List[int]:
     lines = cv2.HoughLinesP(edges, 1, np.pi/180, 100, minLineLength, maxLineGap)
     return lines
 
-# image = cv2.imread('./dds-89395-page-8.png') #reading the image (dev copy)
+image = cv2.imread('./dds-89395-page-8.png') #reading the image (dev copy)
 # image = cv2.imread('./dds-89407-page-8.png') #reading the image
-image = cv2.imread('./dds-89412-page-8.png') #reading the image
+# image = cv2.imread('./dds-89412-page-8.png') #reading the image
 gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) # converting to grayscale image
 (thresh, im_bw) = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU) # converting to binary image
 im_bw = ~im_bw
 
+# Total of regions
+total_columns = int(image.shape[1]/378)
 mask_titles = np.ones(image.shape[:2], dtype="uint8") * 255 # create blank image of same dimension of the original image
 mask_contents = np.ones(image.shape[:2], dtype="uint8") * 255 # create blank image of same dimension of the original image for content
 lines = lines_extraction(gray) # line extraction
@@ -68,29 +71,49 @@ for c in contours:
     else:
         cv2.drawContours(mask_contents, [c], -1, 0, -1)
 
-cv2.imshow('mask_titles', mask_titles)
+#cv2.imshow('mask_titles', mask_titles)
 cv2.imwrite('mask_titles.png', mask_titles)
-cv2.imshow('mask_contents', mask_contents)
+#cv2.imshow('mask_contents', mask_contents)
 cv2.imwrite('mask_contents.png', mask_contents)
 
 x, y = mask_titles.shape # image dimensions
 
 value = max(math.ceil(x/100),math.ceil(y/100))+20
 rlsa_titles_mask = rlsa.rlsa(mask_titles, True, False, value) #rlsa application
-rlsa_titles_mask_ = rlsa.rlsa(mask_titles, True, False, value) #rlsa application
-cv2.imshow('rlsa_title_mask', rlsa_titles_mask)
+rlsa_titles_mask_for_final = rlsa.rlsa(mask_titles, True, False, value) #rlsa application
 cv2.imwrite('rlsa_title_mask.png', rlsa_titles_mask)
 
 value = max(math.ceil(x/100),math.ceil(y/100))+20
 rlsa_contents_mask = rlsa.rlsa(mask_contents, False, True, value) #rlsa application
-cv2.imshow('rlsa_contents_mask', rlsa_contents_mask)
+rlsa_contents_mask_for_avg_width = rlsa.rlsa(mask_contents, False, True, value) #rlsa application
 cv2.imwrite('rlsa_contents_mask.png', rlsa_contents_mask)
+cv2.imwrite('rlsa_contents_mask_for_avg_width.png', rlsa_contents_mask_for_avg_width)
 
-# Total of regions
-total_columns = int(image.shape[1]/378)
+# CALC AVG WIDTHS?!
+(for_avgs_contours, _) = cv2.findContours(~rlsa_contents_mask_for_avg_width,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+for_avgs_contours_mask = np.ones(image.shape, dtype="uint8") * 255 # blank 3 layer image
+contents_sum_list = []
+contents_x_list = [] # to get the left-most content box
+contents_length = 0
+for idx, contour in enumerate(for_avgs_contours):
+    [x, y, w, h] = cv2.boundingRect(contour)
+    # apply some heuristic to different other stranger things masquerading as titles
+    if w*h > 1500: # remove tiny contours the dirtify the image
+        cv2.drawContours(for_avgs_contours_mask, [contour], -1, 0, -1)
+        cv2.rectangle(for_avgs_contours_mask, (x,y), (x+w,y+h), (255, 0, 0), 5)
+        cv2.putText(for_avgs_contours_mask, "#{},x{},y{},w{}".format(idx, x, y, w), cv2.boundingRect(contour)[:2], cv2.FONT_HERSHEY_PLAIN, 2.0, [0, 0, 255], 2) # [B, G, R]
+        contents_sum_list.append(w)
+        contents_x_list.append(x)
+        contents_length += 1
+
+trimmed_mean = int(stats.trim_mean(contents_sum_list, 0.1)) # trimmed mean
+print("Sum of list element is : ", contents_sum_list)
+print("Average of list element is : ", trimmed_mean )
+print("Leftmost content box is : ", min(contents_x_list) )
+cv2.imwrite('for_avgs_contours_mask.png', for_avgs_contours_mask) # debug remove
 
 (contours, _) = cv2.findContours(~rlsa_titles_mask,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
-contours = sorted(contours, key=lambda contour:determine_precedence(contour, total_columns))
+contours = sorted(contours, key=lambda contour:determine_precedence(contour, total_columns, trimmed_mean))
 title_mask = np.ones(image.shape, dtype="uint8") * 255 # blank 3 layer image
 # for idx, contour in enumerate(contours):
 for idx in range(len(contours)):
@@ -105,7 +128,7 @@ for idx in range(len(contours)):
         # cv2.putText(title_mask, "#{},x{},y{}".format(idx, x, y), cv2.boundingRect(contours[idx])[:2], cv2.FONT_HERSHEY_PLAIN, 2.0, [255, 153, 255], 2) # [B, G, R]
 
 (contours, _) = cv2.findContours(~rlsa_contents_mask,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
-content_contours = sorted(contours, key=lambda contour:determine_precedence(contour, total_columns))
+content_contours = sorted(contours, key=lambda contour:determine_precedence(contour, total_columns, trimmed_mean))
 contents_mask = np.ones(image.shape, dtype="uint8") * 255 # blank 3 layer image
 # for idx, contour in enumerate(contours):
 for idx in range(len(content_contours)):
@@ -120,8 +143,8 @@ for idx in range(len(content_contours)):
         # cv2.putText(contents_mask, "#{},x{},y{}".format(idx, x, y), cv2.boundingRect(contours[idx])[:2], cv2.FONT_HERSHEY_PLAIN, 2.0, [255, 153, 255], 2) # [B, G, R]
 
 # the final act!!!
-(contours, _) = cv2.findContours(~rlsa_titles_mask_,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
-contours = sorted(contours, key=lambda contour:determine_precedence(contour, total_columns))
+(contours, _) = cv2.findContours(~rlsa_titles_mask_for_final,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+contours = sorted(contours, key=lambda contour:determine_precedence(contour, total_columns, trimmed_mean))
 
 article_complete = False
 title_lines_count = 0
@@ -134,7 +157,7 @@ for idx, (prev, curr) in enumerate(zip(contours[::],contours[1::])):
     [px, py, pw, ph] = cv2.boundingRect(prev)
     [cx, cy, cw, ch] = cv2.boundingRect(curr)
     # apply some heuristic to differentiate other stranger things masquerading as titles
-    if pw*ph > 1500: # remove tiny contours the dirtify the image
+    if cw*ch > 1500: # remove tiny contours that dirtify the image
         if (cy-py) > 0: # EITHER SMALL OR BIG GAP DETECTED
             if (cy-py) > (ch+ph)*2: # WE HAVE A BIG GAP
                 title_lines_count += 1
