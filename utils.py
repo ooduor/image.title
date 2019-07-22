@@ -15,7 +15,7 @@ def top_chunk(widths, chunks=2):
 
     return out[chunks-1]
 
-def determine_precedence(contour, cols, avgwidth):
+def determine_precedence(contour, cols, avgwidth, leftmost_x):
     """
     Sort contours by distance from...
     https://stackoverflow.com/questions/39403183/python-opencv-sorting-contours
@@ -25,6 +25,10 @@ def determine_precedence(contour, cols, avgwidth):
     i = 1
     col_loc = None
     while i <= cols:
+        # for the first loop only, offset with beginning of first title
+        if i == 1:
+            avgwidth = avgwidth + leftmost_x
+
         if x <= avgwidth:
             col_loc = ((x // tolerance_factor) * tolerance_factor) * i + y
         i = i + 1
