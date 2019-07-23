@@ -15,9 +15,6 @@ from pythonRLSA import rlsa
 
 from utils import determine_precedence, lines_extraction
 
-minLineLength = 100
-maxLineGap = 50
-
 image = cv2.imread('./dds-89395-page-8test.png') #reading the image (dev copy)
 # image = cv2.imread('./dds-89395-page-8.png') #reading the image (dev copy)
 # image = cv2.imread('./dds-89407-page-8.png') #reading the image

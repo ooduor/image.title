@@ -1,4 +1,9 @@
 import cv2
+from typing import List, Dict
+import numpy as np
+
+minLineLength = 100
+maxLineGap = 50
 
 def lines_extraction(gray: List[int]) -> List[int]:
     """
