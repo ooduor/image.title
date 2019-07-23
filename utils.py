@@ -1,5 +1,13 @@
 import cv2
 
+def lines_extraction(gray: List[int]) -> List[int]:
+    """
+    this function extracts the lines from the binary image. Cleaning process.
+    """
+    edges = cv2.Canny(gray, 75, 150)
+    lines = cv2.HoughLinesP(edges, 1, np.pi/180, 100, minLineLength, maxLineGap)
+    return lines
+
 def top_chunk(widths, chunks=2):
     """
     Extract the top quadrant of a sorted list

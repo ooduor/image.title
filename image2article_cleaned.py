@@ -13,18 +13,10 @@ import requests
 import re
 from pythonRLSA import rlsa
 
-from utils import determine_precedence
+from utils import determine_precedence, lines_extraction
 
 minLineLength = 100
 maxLineGap = 50
-
-def lines_extraction(gray: List[int]) -> List[int]:
-    """
-    this function extracts the lines from the binary image. Cleaning process.
-    """
-    edges = cv2.Canny(gray, 75, 150)
-    lines = cv2.HoughLinesP(edges, 1, np.pi/180, 100, minLineLength, maxLineGap)
-    return lines
 
 image = cv2.imread('./dds-89395-page-8test.png') #reading the image (dev copy)
 # image = cv2.imread('./dds-89395-page-8.png') #reading the image (dev copy)
